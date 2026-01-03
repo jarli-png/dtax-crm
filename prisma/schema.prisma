@@ -1,0 +1,462 @@
+// Prisma schema for dTax CRM
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// BRUKERE OG AUTENTISERING
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          UserRole  @default(SALES)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLogin     DateTime?
+  
+  // Relasjoner
+  prospects     Prospect[]
+  activities    Activity[]
+  campaigns     Campaign[]
+  emailsSent    EmailLog[]
+}
+
+enum UserRole {
+  ADMIN
+  SALES
+  SUPPORT
+}
+
+// ============================================
+// PROSPECTS OG KUNDER
+// ============================================
+
+model Prospect {
+  id                  String          @id @default(uuid())
+  
+  // Kontaktinformasjon
+  firstName           String
+  lastName            String
+  email               String?
+  phone               String?
+  phone2              String?
+  address             String?
+  postalCode          String?
+  city                String?
+  
+  // Status og klassifisering
+  status              ProspectStatus  @default(NEW)
+  source              String?         // 'bronnøysund', 'manual', 'import', 'website'
+  priority            Priority        @default(MEDIUM)
+  
+  // Tilordning
+  assignedToId        String?
+  assignedTo          User?           @relation(fields: [assignedToId], references: [id])
+  
+  // Tax system integrasjon
+  taxSystemUserId     String?         // ID i tax.salestext.no
+  taxSystemStatus     TaxStatus?
+  currentStep         Int?            // Steg 1-6
+  
+  // Invoice system integrasjon  
+  invoiceCustomerId   String?         // ID i invoice.dtax.no
+  
+  // Metadata
+  notes               String?
+  tags                String[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  convertedAt         DateTime?
+  
+  // Relasjoner
+  companies           ProspectCompany[]
+  documents           Document[]
+  activities          Activity[]
+  emailLogs           EmailLog[]
+  contracts           Contract[]
+  invoices            Invoice[]
+  
+  @@index([status])
+  @@index([assignedToId])
+  @@index([taxSystemUserId])
+}
+
+enum ProspectStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  IN_PROGRESS     // Har startet i tax.salestext.no
+  STEP_1          // Godkjent kontrakt
+  STEP_2          // Lastet opp dokumenter
+  STEP_3          // AI-analyse
+  STEP_4          // Gjennomgang
+  STEP_5          // Klar for innsending
+  STEP_6          // Sendt til Skatteetaten - SUKSESS!
+  CONVERTED       // Fullført og fakturert
+  LOST
+  INACTIVE
+}
+
+enum TaxStatus {
+  NOT_REGISTERED
+  REGISTERED
+  CASE_CREATED
+  DOCUMENTS_UPLOADED
+  ANALYSIS_COMPLETE
+  READY_FOR_SUBMISSION
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ============================================
+// SELSKAPER (fra prospect-liste)
+// ============================================
+
+model ProspectCompany {
+  id                  String    @id @default(uuid())
+  prospectId          String
+  prospect            Prospect  @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  // Selskapsinformasjon
+  companyName         String
+  orgNumber           String
+  role                String?   // 'Styreleder', 'Daglig leder', etc.
+  
+  // Sletteinfo
+  deletedDate         DateTime?
+  deletionReason      String?   // 'Konkurs', 'Sletting', etc.
+  
+  // Økonomisk info
+  shareCapitalPaid    Decimal?  @db.Decimal(15, 2)
+  shareCapitalReg     Decimal?  @db.Decimal(15, 2)
+  
+  // Potensiell verdi
+  estimatedTaxValue   Decimal?  @db.Decimal(15, 2)
+  
+  // Brønnøysund
+  brrregUrl           String?
+  
+  createdAt           DateTime  @default(now())
+  
+  @@index([orgNumber])
+  @@index([prospectId])
+}
+
+// ============================================
+// DOKUMENTER
+// ============================================
+
+model Document {
+  id              String        @id @default(uuid())
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  // Fil-info
+  fileName        String
+  fileType        String        // 'contract', 'invoice', 'tax_document', 'other'
+  mimeType        String
+  fileSize        Int
+  
+  // Lagring
+  s3Key           String        // S3 bucket key
+  s3Bucket        String        @default("dtax-crm-documents")
+  
+  // Metadata
+  description     String?
+  source          String?       // 'tax_system', 'invoice_system', 'upload', 'email'
+  sourceId        String?       // Referanse til kilde-system
+  
+  // Versjonering
+  version         Int           @default(1)
+  isLatest        Boolean       @default(true)
+  
+  uploadedById    String?
+  createdAt       DateTime      @default(now())
+  
+  @@index([prospectId])
+  @@index([fileType])
+}
+
+// ============================================
+// KONTRAKTER (fra tax.salestext.no)
+// ============================================
+
+model Contract {
+  id              String        @id @default(uuid())
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  // Kontrakt-info
+  contractType    String        // 'service_agreement', 'altinn_consent', etc.
+  status          ContractStatus @default(PENDING)
+  
+  // Signatur
+  signedAt        DateTime?
+  signatureRef    String?       // BankID referanse
+  
+  // Tax system referanse
+  taxSystemRef    String?
+  
+  // Dokument
+  documentId      String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  @@index([prospectId])
+}
+
+enum ContractStatus {
+  PENDING
+  SENT
+  SIGNED
+  EXPIRED
+  CANCELLED
+}
+
+// ============================================
+// FAKTURAER (fra invoice.dtax.no)
+// ============================================
+
+model Invoice {
+  id              String        @id @default(uuid())
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  // Invoice system referanse
+  invoiceSystemId String        // ID i invoice.dtax.no
+  invoiceNumber   String
+  
+  // Beløp
+  amount          Decimal       @db.Decimal(15, 2)
+  vatAmount       Decimal       @db.Decimal(15, 2)
+  totalAmount     Decimal       @db.Decimal(15, 2)
+  
+  // Provisjon-info
+  taxBenefit      Decimal?      @db.Decimal(15, 2)  // Skattefordel oppnådd
+  commissionRate  Decimal?      @db.Decimal(5, 4)   // f.eks. 0.30 = 30%
+  
+  // Status
+  status          InvoiceStatus @default(DRAFT)
+  dueDate         DateTime?
+  paidAt          DateTime?
+  
+  // Dokument
+  documentId      String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  @@index([prospectId])
+  @@index([invoiceSystemId])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+  CREDITED
+}
+
+// ============================================
+// AKTIVITETER OG LOGG
+// ============================================
+
+model Activity {
+  id              String        @id @default(uuid())
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  userId          String?
+  user            User?         @relation(fields: [userId], references: [id])
+  
+  type            ActivityType
+  subject         String
+  description     String?
+  
+  // For calls/meetings
+  duration        Int?          // minutter
+  outcome         String?
+  
+  // For system events
+  oldValue        String?
+  newValue        String?
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([prospectId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+enum ActivityType {
+  NOTE
+  CALL
+  EMAIL
+  MEETING
+  TASK
+  STATUS_CHANGE
+  DOCUMENT_UPLOADED
+  CONTRACT_SIGNED
+  INVOICE_CREATED
+  TAX_SUBMITTED
+  SYSTEM_EVENT
+}
+
+// ============================================
+// E-POST OG KAMPANJER
+// ============================================
+
+model Campaign {
+  id              String        @id @default(uuid())
+  name            String
+  description     String?
+  
+  // Mal
+  subject         String
+  bodyHtml        String
+  bodyText        String?
+  
+  // Status
+  status          CampaignStatus @default(DRAFT)
+  
+  // Statistikk
+  sentCount       Int           @default(0)
+  openedCount     Int           @default(0)
+  clickedCount    Int           @default(0)
+  convertedCount  Int           @default(0)
+  
+  // Eier
+  createdById     String
+  createdBy       User          @relation(fields: [createdById], references: [id])
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  sentAt          DateTime?
+  
+  // Relasjoner
+  emailLogs       EmailLog[]
+  
+  @@index([status])
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  PAUSED
+  CANCELLED
+}
+
+model EmailLog {
+  id              String        @id @default(uuid())
+  
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  campaignId      String?
+  campaign        Campaign?     @relation(fields: [campaignId], references: [id])
+  
+  sentById        String?
+  sentBy          User?         @relation(fields: [sentById], references: [id])
+  
+  // E-post detaljer
+  toEmail         String
+  fromEmail       String        @default("noreply@dtax.no")
+  subject         String
+  bodyPreview     String?
+  
+  // Status
+  status          EmailStatus   @default(QUEUED)
+  
+  // SES tracking
+  sesMessageId    String?
+  
+  // Engagement
+  openedAt        DateTime?
+  clickedAt       DateTime?
+  bouncedAt       DateTime?
+  complainedAt    DateTime?
+  
+  // BCC
+  bccEmail        String?
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([prospectId])
+  @@index([campaignId])
+  @@index([status])
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  BOUNCED
+  COMPLAINED
+  FAILED
+}
+
+// ============================================
+// SYSTEM-INTEGRASJON LOGG
+// ============================================
+
+model IntegrationLog {
+  id              String        @id @default(uuid())
+  
+  system          String        // 'tax_salestext', 'invoice_dtax', 'ses'
+  endpoint        String
+  method          String
+  
+  requestBody     String?
+  responseBody    String?
+  statusCode      Int?
+  
+  success         Boolean
+  errorMessage    String?
+  
+  relatedType     String?       // 'prospect', 'invoice', etc.
+  relatedId       String?
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([system])
+  @@index([createdAt])
+}
+
+// ============================================
+// SYSTEMINNSTILLINGER
+// ============================================
+
+model Setting {
+  id              String        @id @default(uuid())
+  key             String        @unique
+  value           String
+  description     String?
+  updatedAt       DateTime      @updatedAt
+}
