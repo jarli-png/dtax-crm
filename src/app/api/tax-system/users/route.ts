@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
         <p><strong>E-post:</strong> ${prospect.email}</p>
         <p><strong>Telefon:</strong> ${prospect.phone || 'Ikke oppgitt'}</p>
         <p><strong>Selskap:</strong> ${prospect.companies[0]?.companyName || 'Ikke angitt'}</p>
-        <p><strong>Aksjekapital:</strong> ${prospect.companies[0]?.shareCapitalPaid?.toLocaleString('nb-NO')} kr</p>
+        <p><strong>Aksjekapital:</strong> ${prospect.companies[0]?.shareCapitalPaid ? Number(prospect.companies[0].shareCapitalPaid).toLocaleString('nb-NO') : 'Ikke oppgitt'} kr</p>
         <hr>
         <p><a href="https://crm.dtax.no/prospects/${prospect.id}">Åpne i CRM</a></p>
         <p><a href="https://tax.salestext.no/admin/users/${taxUser.id}">Åpne i tax.salestext.no</a></p>
