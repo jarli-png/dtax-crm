@@ -115,9 +115,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
           {/* Demo credentials */}
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-xs text-gray-500 font-medium mb-2">Demo-tilgang:</p>
-            <p className="text-sm text-gray-700">E-post: admin@dtax.no</p>
-            <p className="text-sm text-gray-700">Passord: admin123</p>
           </div>
         </div>
 
