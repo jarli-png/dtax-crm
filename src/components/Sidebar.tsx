@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { 
   HomeIcon, 
   UsersIcon, 
@@ -8,10 +9,11 @@ import {
   ArrowRightOnRectangleIcon,
   ChartBarIcon,
   DocumentTextIcon,
-  CurrencyDollarIcon
+  CurrencyDollarIcon,
+  InboxIcon
 } from '@heroicons/react/24/outline';
 
-type View = 'dashboard' | 'prospects' | 'prospect-detail' | 'campaigns' | 'settings';
+type View = 'dashboard' | 'prospects' | 'prospect-detail' | 'campaigns' | 'customers' | 'inbox' | 'settings';
 
 interface SidebarProps {
   currentView: View;
@@ -20,10 +22,38 @@ interface SidebarProps {
   user: { name: string; role: string } | null;
 }
 
+interface SidebarStats {
+  converted: number;
+  inProgress: number;
+}
+
 export default function Sidebar({ currentView, onNavigate, onLogout, user }: SidebarProps) {
+  const [stats, setStats] = useState<SidebarStats>({ converted: 0, inProgress: 0 });
+
+  useEffect(() => {
+    fetchStats();
+    // Oppdater hvert 30. sekund
+    const interval = setInterval(fetchStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      const response = await fetch('/api/stats/sidebar');
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch sidebar stats:', error);
+    }
+  };
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: HomeIcon },
-    { id: 'prospects', label: 'Prospects', icon: UsersIcon },
+    { id: 'prospects', label: 'Prospekter', icon: UsersIcon },
+    { id: 'customers', label: 'Kunder', icon: UsersIcon },
+    { id: 'inbox', label: 'Innboks', icon: InboxIcon },
     { id: 'campaigns', label: 'Kampanjer', icon: EnvelopeIcon },
     { id: 'settings', label: 'Innstillinger', icon: Cog6ToothIcon },
   ];
@@ -116,11 +146,11 @@ export default function Sidebar({ currentView, onNavigate, onLogout, user }: Sid
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-gray-300">Konvertert</span>
-                <span className="text-sm font-semibold text-dtax-success">12</span>
+                <span className="text-sm font-semibold text-dtax-success">{stats.converted}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-300">I prosess</span>
-                <span className="text-sm font-semibold text-dtax-accent">34</span>
+                <span className="text-sm font-semibold text-dtax-accent">{stats.inProgress}</span>
               </div>
             </div>
           </div>

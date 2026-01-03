@@ -30,6 +30,7 @@ model User {
   activities    Activity[]
   campaigns     Campaign[]
   emailsSent    EmailLog[]
+  assignedTickets   Ticket[]
 }
 
 enum UserRole {
@@ -86,6 +87,7 @@ model Prospect {
   emailLogs           EmailLog[]
   contracts           Contract[]
   invoices            Invoice[]
+  tickets           Ticket[]
   
   @@index([status])
   @@index([assignedToId])
@@ -459,4 +461,66 @@ model Setting {
   value           String
   description     String?
   updatedAt       DateTime      @updatedAt
+}
+
+// ============================================
+// TICKETS (Kundehenvendelser)
+// ============================================
+
+model Ticket {
+  id              String        @id @default(uuid())
+  ticketNumber    String        @unique  // F.eks. "TKT-2026-0001"
+  
+  prospectId      String?
+  prospect        Prospect?     @relation(fields: [prospectId], references: [id])
+  
+  subject         String
+  status          TicketStatus  @default(OPEN)
+  priority        Priority      @default(MEDIUM)
+  
+  assignedToId    String?
+  assignedTo      User?         @relation(fields: [assignedToId], references: [id])
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  closedAt        DateTime?
+  
+  messages        TicketMessage[]
+  
+  @@index([status])
+  @@index([prospectId])
+  @@index([ticketNumber])
+}
+
+enum TicketStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+model TicketMessage {
+  id              String        @id @default(uuid())
+  ticketId        String
+  ticket          Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  
+  direction       MessageDirection  // INBOUND eller OUTBOUND
+  
+  fromEmail       String
+  toEmail         String
+  subject         String
+  bodyHtml        String?
+  bodyText        String?
+  
+  // Brevo/e-post referanse
+  messageId       String?
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([ticketId])
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
 }
