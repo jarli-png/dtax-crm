@@ -1,17 +1,6 @@
 'use client';
-
 import { useState, useEffect } from 'react';
-import { 
-  HomeIcon, 
-  UsersIcon, 
-  EnvelopeIcon, 
-  Cog6ToothIcon,
-  ArrowRightOnRectangleIcon,
-  ChartBarIcon,
-  DocumentTextIcon,
-  CurrencyDollarIcon,
-  InboxIcon
-} from '@heroicons/react/24/outline';
+import { HomeIcon, UserGroupIcon, UsersIcon, InboxIcon, EnvelopeIcon, Cog6ToothIcon, ArrowLeftOnRectangleIcon } from '@heroicons/react/24/outline';
 
 type View = 'dashboard' | 'prospects' | 'prospect-detail' | 'campaigns' | 'customers' | 'inbox' | 'settings';
 
@@ -22,151 +11,106 @@ interface SidebarProps {
   user: { name: string; role: string } | null;
 }
 
-interface SidebarStats {
+interface Stats {
   converted: number;
   inProgress: number;
+  overdueTasks: number;
 }
 
 export default function Sidebar({ currentView, onNavigate, onLogout, user }: SidebarProps) {
-  const [stats, setStats] = useState<SidebarStats>({ converted: 0, inProgress: 0 });
+  const [stats, setStats] = useState<Stats>({ converted: 0, inProgress: 0, overdueTasks: 0 });
 
   useEffect(() => {
     fetchStats();
-    // Oppdater hvert 30. sekund
-    const interval = setInterval(fetchStats, 30000);
+    const interval = setInterval(fetchStats, 60000);
     return () => clearInterval(interval);
   }, []);
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/stats/sidebar');
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch sidebar stats:', error);
-    }
+      const res = await fetch('/api/stats/sidebar');
+      if (res.ok) setStats(await res.json());
+    } catch (e) {}
   };
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: HomeIcon },
-    { id: 'prospects', label: 'Prospekter', icon: UsersIcon },
-    { id: 'customers', label: 'Kunder', icon: UsersIcon },
-    { id: 'inbox', label: 'Innboks', icon: InboxIcon },
-    { id: 'campaigns', label: 'Kampanjer', icon: EnvelopeIcon },
-    { id: 'settings', label: 'Innstillinger', icon: Cog6ToothIcon },
+    { id: 'dashboard' as View, icon: HomeIcon, label: 'Dashboard' },
+    { id: 'prospects' as View, icon: UserGroupIcon, label: 'Prospekter' },
+    { id: 'customers' as View, icon: UsersIcon, label: 'Kunder' },
+    { id: 'inbox' as View, icon: InboxIcon, label: 'Innboks' },
+    { id: 'campaigns' as View, icon: EnvelopeIcon, label: 'Kampanjer' },
+    { id: 'settings' as View, icon: Cog6ToothIcon, label: 'Innstillinger' },
   ];
 
   return (
-    <aside className="sidebar">
-      {/* Logo */}
-      <div className="px-6 py-6 border-b border-white/10">
-        <h1 className="text-2xl font-bold text-white">
-          <span className="text-dtax-accent">d</span>Tax CRM
-        </h1>
-        <p className="text-xs text-gray-400 mt-1">Kundestøtte & Salg</p>
+    <div className="w-64 bg-dtax-dark text-white flex flex-col h-screen fixed left-0 top-0">
+      <div className="p-4 border-b border-gray-700">
+        <h1 className="text-xl font-bold text-dtax-primary">dTax CRM</h1>
+        <p className="text-xs text-gray-400">Kundestøtte & Salg</p>
       </div>
 
-      {/* Brukerinfo */}
-      <div className="px-4 py-4 border-b border-white/10">
+      <div className="p-4 border-b border-gray-700">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-full bg-dtax-accent flex items-center justify-center">
-            <span className="text-white font-semibold">
-              {user?.name?.charAt(0).toUpperCase() || 'U'}
-            </span>
+          <div className="w-10 h-10 bg-dtax-primary rounded-full flex items-center justify-center font-bold">
+            {user?.name?.charAt(0) || 'A'}
           </div>
           <div>
-            <p className="text-sm font-medium text-white">{user?.name || 'Bruker'}</p>
-            <p className="text-xs text-gray-400">{user?.role || 'Rolle'}</p>
+            <p className="font-medium">{user?.name || 'Admin'}</p>
+            <p className="text-xs text-gray-400">{user?.role || 'ADMIN'}</p>
           </div>
         </div>
       </div>
 
-      {/* Navigasjon */}
-      <nav className="mt-4 flex-1">
-        <ul className="space-y-1 px-2">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentView === item.id || 
-              (currentView === 'prospect-detail' && item.id === 'prospects');
-            
-            return (
-              <li key={item.id}>
-                <button
-                  onClick={() => onNavigate(item.id as View)}
-                  className={`sidebar-item w-full ${isActive ? 'active' : ''}`}
-                >
-                  <Icon className="w-5 h-5 mr-3" />
-                  {item.label}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-
-        {/* Integrasjoner */}
-        <div className="mt-8 px-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            Integrasjoner
-          </p>
-          <ul className="space-y-1">
-            <li>
-              <a 
-                href="https://tax.salestext.no" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="sidebar-item text-sm"
-              >
-                <DocumentTextIcon className="w-4 h-4 mr-3" />
-                tax.salestext.no
-              </a>
-            </li>
-            <li>
-              <a 
-                href="https://invoice.dtax.no" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="sidebar-item text-sm"
-              >
-                <CurrencyDollarIcon className="w-4 h-4 mr-3" />
-                invoice.dtax.no
-              </a>
-            </li>
-          </ul>
-        </div>
-
-        {/* Statistikk-kort */}
-        <div className="mt-8 px-4">
-          <div className="bg-white/5 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-400">Denne måneden</span>
-              <ChartBarIcon className="w-4 h-4 text-gray-400" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-300">Konvertert</span>
-                <span className="text-sm font-semibold text-dtax-success">{stats.converted}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-300">I prosess</span>
-                <span className="text-sm font-semibold text-dtax-accent">{stats.inProgress}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+      <nav className="flex-1 p-2">
+        {menuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onNavigate(item.id)}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+              currentView === item.id || (currentView === 'prospect-detail' && item.id === 'prospects')
+                ? 'bg-dtax-primary text-white' 
+                : 'text-gray-300 hover:bg-gray-700'
+            }`}
+          >
+            <item.icon className="w-5 h-5" />
+            <span>{item.label}</span>
+          </button>
+        ))}
       </nav>
 
-      {/* Logg ut */}
-      <div className="px-4 py-4 border-t border-white/10">
-        <button
-          onClick={onLogout}
-          className="sidebar-item w-full text-red-400 hover:text-red-300 hover:bg-red-500/10"
-        >
-          <ArrowRightOnRectangleIcon className="w-5 h-5 mr-3" />
-          Logg ut
+      <div className="p-4 border-t border-gray-700">
+        <p className="text-xs text-gray-500 mb-1">INTEGRASJONER</p>
+        <a href="https://tax.salestext.no" target="_blank" className="block text-sm text-gray-300 hover:text-white py-1">↗ tax.salestext.no</a>
+        <a href="https://invoice.dtax.no" target="_blank" className="block text-sm text-gray-300 hover:text-white py-1">↗ invoice.dtax.no</a>
+      </div>
+
+      <div className="p-4 border-t border-gray-700">
+        <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+          <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+          Denne måneden
+        </p>
+        <div className="flex justify-between text-sm">
+          <span>Konvertert</span>
+          <span className="text-green-400 font-medium">{stats.converted}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span>I prosess</span>
+          <span className="text-yellow-400 font-medium">{stats.inProgress}</span>
+        </div>
+        {stats.overdueTasks > 0 && (
+          <div className="flex justify-between text-sm mt-2 text-red-400">
+            <span>⚠️ Forfalt</span>
+            <span className="font-medium">{stats.overdueTasks}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="p-4 border-t border-gray-700">
+        <button onClick={onLogout} className="w-full flex items-center space-x-2 text-gray-400 hover:text-white">
+          <ArrowLeftOnRectangleIcon className="w-5 h-5" />
+          <span>Logg ut</span>
         </button>
       </div>
-    </aside>
+    </div>
   );
 }

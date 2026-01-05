@@ -184,7 +184,7 @@ export default function ProspectList({ onViewProspect }: ProspectListProps) {
                   <td className="font-medium">{p.firstName} {p.lastName}</td>
                   <td>{p.phone||'-'}</td>
                   <td>{p.companies?.[0]?.companyName||'-'}</td>
-                  <td>{p.companies?.[0]?.deletedDate ? new Date(p.companies[0].deletedDate).toLocaleDateString('nb-NO') : '-'}</td>
+                  <td>{p.companies?.[0]?.deletedDate ? new Date(p.companies[0].deletedDate).toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}</td>
                   <td>{p.companies?.[0]?.shareCapitalPaid ? fmt(p.companies[0].shareCapitalPaid) : '-'}</td>
                   <td><span className={`status-badge ${getStatusBadge(p.status)}`}>{p.status}</span></td>
                 </tr>

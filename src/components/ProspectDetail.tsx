@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { ArrowLeftIcon, PencilIcon, CheckIcon, XMarkIcon, PlusIcon, CalendarIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PencilIcon, CheckIcon, XMarkIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface Company {
   id: string;
@@ -40,8 +40,26 @@ interface Prospect {
   notes: string;
   companies: Company[];
   tasks: Task[];
+  notesList: Note[];
   createdAt: string;
 }
+
+const STATUS_CONFIG: Record<string, { label: string; probability: number; color: string }> = {
+  'NEW': { label: 'Ny', probability: 5, color: 'bg-gray-400' },
+  'CONTACTED': { label: 'Kontaktet', probability: 10, color: 'bg-blue-400' },
+  'QUALIFIED': { label: 'Kvalifisert', probability: 25, color: 'bg-blue-500' },
+  'IN_PROGRESS': { label: 'I prosess', probability: 40, color: 'bg-yellow-500' },
+  'STEP_1': { label: 'Steg 1', probability: 45, color: 'bg-yellow-500' },
+  'STEP_2': { label: 'Steg 2', probability: 50, color: 'bg-yellow-600' },
+  'STEP_3': { label: 'Steg 3', probability: 60, color: 'bg-orange-500' },
+  'STEP_4': { label: 'Steg 4', probability: 70, color: 'bg-orange-500' },
+  'STEP_5': { label: 'Steg 5', probability: 80, color: 'bg-orange-600' },
+  'STEP_6': { label: 'Steg 6 - Sendt', probability: 90, color: 'bg-green-500' },
+  'CONVERTED': { label: 'Konvertert', probability: 100, color: 'bg-green-600' },
+  'LOST': { label: 'Tapt', probability: 0, color: 'bg-red-500' },
+};
+
+const FUNNEL_STEPS = ['NEW', 'CONTACTED', 'QUALIFIED', 'IN_PROGRESS', 'STEP_1', 'STEP_2', 'STEP_3', 'STEP_4', 'STEP_5', 'STEP_6', 'CONVERTED'];
 
 export default function ProspectDetail({ prospectId, onBack }: { prospectId: string; onBack: () => void }) {
   const [prospect, setProspect] = useState<Prospect | null>(null);
@@ -72,6 +90,16 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
   };
 
   const showMsg = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 2000); };
+
+  const fmtDate = (d: string) => {
+    const date = new Date(d);
+    return `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()}`;
+  };
+
+  const fmtDateTime = (d: string) => {
+    const date = new Date(d);
+    return `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  };
 
   const saveContact = async () => {
     try {
@@ -113,6 +141,7 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
       body: JSON.stringify({ status })
     });
     fetchProspect();
+    showMsg(`✓ Status endret til ${STATUS_CONFIG[status]?.label || status}`);
   };
 
   const addNote = async () => {
@@ -142,6 +171,7 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
     setNewTask({ title: '', dueDate: '' });
     setShowTaskForm(false);
     fetchProspect();
+    showMsg('✓ Oppgave lagt til');
   };
 
   const toggleTask = async (taskId: string, completed: boolean) => {
@@ -154,10 +184,16 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
   };
 
   const fmt = (n: number) => new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n);
-  const totalCap = prospect?.companies.reduce((s, c) => s + (c.shareCapitalPaid || 0), 0) || 0;
-
+  
   if (loading) return <div className="flex justify-center py-12"><div className="animate-spin h-8 w-8 border-b-2 border-blue-600 rounded-full"></div></div>;
   if (!prospect) return <div className="text-center py-12"><p>Ikke funnet</p><button onClick={onBack} className="btn btn-secondary mt-4">Tilbake</button></div>;
+
+  const totalCap = prospect.companies.reduce((s, c) => s + (Number(c.shareCapitalPaid) || 0), 0);
+  const taxBenefit = totalCap * 0.22;
+  const dtaxValue = taxBenefit * 0.30;
+  const statusConfig = STATUS_CONFIG[prospect.status] || { probability: 0, label: prospect.status, color: 'bg-gray-400' };
+  const weightedValue = dtaxValue * (statusConfig.probability / 100);
+  const currentStepIndex = FUNNEL_STEPS.indexOf(prospect.status);
 
   return (
     <div className="space-y-6">
@@ -171,28 +207,71 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
         </div>
         <div className="flex gap-2 items-center">
           {msg && <span className="text-sm text-green-600">{msg}</span>}
-          <select value={prospect.status} onChange={e => updateStatus(e.target.value)} className="form-input text-sm">
-            <option value="NEW">Ny</option>
-            <option value="CONTACTED">Kontaktet</option>
-            <option value="QUALIFIED">Kvalifisert</option>
-            <option value="IN_PROGRESS">I prosess</option>
-            <option value="STEP_1">Steg 1</option>
-            <option value="STEP_2">Steg 2</option>
-            <option value="STEP_3">Steg 3</option>
-            <option value="STEP_4">Steg 4</option>
-            <option value="STEP_5">Steg 5</option>
-            <option value="STEP_6">Steg 6</option>
-            <option value="CONVERTED">Konvertert</option>
-            <option value="LOST">Tapt</option>
-          </select>
+        </div>
+      </div>
+
+      {/* Funnel-visualisering */}
+      <div className="card p-4">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="font-semibold">Salgsprosess</h3>
+          <span className={`px-3 py-1 rounded-full text-white text-sm ${statusConfig.color}`}>
+            {statusConfig.label} ({statusConfig.probability}%)
+          </span>
+        </div>
+        <div className="flex gap-1 mb-4">
+          {FUNNEL_STEPS.map((step, i) => {
+            const config = STATUS_CONFIG[step];
+            const isActive = i <= currentStepIndex && prospect.status !== 'LOST';
+            const isCurrent = step === prospect.status;
+            return (
+              <button
+                key={step}
+                onClick={() => updateStatus(step)}
+                className={`flex-1 h-3 rounded transition-all ${isActive ? config.color : 'bg-gray-200'} ${isCurrent ? 'ring-2 ring-offset-1 ring-blue-500' : ''} hover:opacity-80`}
+                title={`${config.label} (${config.probability}%)`}
+              />
+            );
+          })}
+        </div>
+        <div className="flex justify-between text-xs text-gray-500">
+          <span>Ny</span>
+          <span>Kontaktet</span>
+          <span>Kvalifisert</span>
+          <span>I prosess</span>
+          <span>Steg 1-5</span>
+          <span>Sendt</span>
+          <span>Konvertert</span>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button onClick={() => updateStatus('LOST')} className={`px-3 py-1 text-sm rounded ${prospect.status === 'LOST' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}>
+            Merk som tapt
+          </button>
+          {prospect.status === 'LOST' && (
+            <button onClick={() => updateStatus('NEW')} className="px-3 py-1 text-sm rounded bg-blue-100 text-blue-700 hover:bg-blue-200">
+              Gjenåpne
+            </button>
+          )}
         </div>
       </div>
 
       {/* Verdikort */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="card p-4 bg-blue-50"><p className="text-xs text-blue-600">Aksjekapital</p><p className="text-xl font-bold">{fmt(totalCap)}</p></div>
-        <div className="card p-4 bg-green-50"><p className="text-xs text-green-600">Skattefordel (22%)</p><p className="text-xl font-bold">{fmt(totalCap * 0.22)}</p></div>
-        <div className="card p-4 bg-purple-50"><p className="text-xs text-purple-600">dTax verdi (30%)</p><p className="text-xl font-bold">{fmt(totalCap * 0.22 * 0.30)}</p></div>
+      <div className="grid grid-cols-4 gap-4">
+        <div className="card p-4 bg-blue-50">
+          <p className="text-xs text-blue-600">Aksjekapital</p>
+          <p className="text-xl font-bold">{fmt(totalCap)}</p>
+        </div>
+        <div className="card p-4 bg-green-50">
+          <p className="text-xs text-green-600">Skattefordel (22%)</p>
+          <p className="text-xl font-bold">{fmt(taxBenefit)}</p>
+        </div>
+        <div className="card p-4 bg-purple-50">
+          <p className="text-xs text-purple-600">dTax verdi (30%)</p>
+          <p className="text-xl font-bold">{fmt(dtaxValue)}</p>
+        </div>
+        <div className="card p-4 bg-yellow-50">
+          <p className="text-xs text-yellow-600">Vektet verdi ({statusConfig.probability}%)</p>
+          <p className="text-xl font-bold">{fmt(weightedValue)}</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -264,8 +343,8 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
                     </div>
                     <p className="text-gray-500">Org: {c.orgNumber}</p>
                     {c.role && <p className="text-gray-500">Rolle: {c.role}</p>}
-                    <p className="text-green-600 font-medium">{fmt(c.shareCapitalPaid || 0)}</p>
-                    {c.deletedDate && <p className="text-red-600 text-xs">⚠️ Slettet {new Date(c.deletedDate).toLocaleDateString('nb-NO')} - {c.deletionReason}</p>}
+                    <p className="text-green-600 font-medium">{fmt(Number(c.shareCapitalPaid) || 0)}</p>
+                    {c.deletedDate && <p className="text-red-600 text-xs">⚠️ Slettet {fmtDate(c.deletedDate)} - {c.deletionReason}</p>}
                     {c.brrregUrl && <a href={c.brrregUrl} target="_blank" className="text-blue-500 text-xs hover:underline">Brønnøysund →</a>}
                   </>
                 )}
@@ -283,19 +362,22 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
           <div className="card-body space-y-2">
             {showTaskForm && (
               <div className="p-3 bg-yellow-50 rounded space-y-2">
-                <input placeholder="Oppgave..." value={newTask.title} onChange={e=>setNewTask({...newTask,title:e.target.value})} className="form-input text-sm"/>
+                <input placeholder="Oppgave (f.eks. Ring tilbake)" value={newTask.title} onChange={e=>setNewTask({...newTask,title:e.target.value})} className="form-input text-sm"/>
                 <input type="datetime-local" value={newTask.dueDate} onChange={e=>setNewTask({...newTask,dueDate:e.target.value})} className="form-input text-sm"/>
-                <button onClick={addTask} className="btn btn-primary btn-sm w-full">Legg til</button>
+                <button onClick={addTask} className="btn btn-primary btn-sm w-full">Legg til oppgave</button>
               </div>
             )}
             {(!prospect.tasks || prospect.tasks.length === 0) ? <p className="text-gray-500 text-sm">Ingen oppgaver</p> : prospect.tasks.map(t => (
-              <div key={t.id} className={`flex items-center gap-2 p-2 rounded ${t.completed ? 'bg-green-50' : 'bg-gray-50'}`}>
+              <div key={t.id} className={`flex items-center gap-2 p-2 rounded ${t.completed ? 'bg-green-50' : new Date(t.dueDate) < new Date() ? 'bg-red-50' : 'bg-gray-50'}`}>
                 <button onClick={() => toggleTask(t.id, !t.completed)} className={`w-5 h-5 rounded border flex items-center justify-center ${t.completed ? 'bg-green-500 text-white' : 'border-gray-300'}`}>
                   {t.completed && <CheckIcon className="w-3 h-3"/>}
                 </button>
                 <div className="flex-1">
                   <p className={`text-sm ${t.completed ? 'line-through text-gray-400' : ''}`}>{t.title}</p>
-                  <p className="text-xs text-gray-500">{new Date(t.dueDate).toLocaleString('nb-NO',{dateStyle:'short',timeStyle:'short'})}</p>
+                  <p className={`text-xs ${new Date(t.dueDate) < new Date() && !t.completed ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
+                    {fmtDateTime(t.dueDate)}
+                    {new Date(t.dueDate) < new Date() && !t.completed && ' ⚠️ Forfalt'}
+                  </p>
                 </div>
               </div>
             ))}
@@ -316,8 +398,8 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
               {notes.map(n => (
                 <div key={n.id} className="p-3 bg-gray-50 rounded flex justify-between">
                   <div>
-                    <p className="text-sm">{n.content}</p>
-                    <p className="text-xs text-gray-400">{new Date(n.createdAt).toLocaleString('nb-NO')}</p>
+                    <p className="text-sm whitespace-pre-wrap">{n.content}</p>
+                    <p className="text-xs text-gray-400 mt-1">{fmtDateTime(n.createdAt)}</p>
                   </div>
                   <button onClick={() => deleteNote(n.id)} className="text-red-400 hover:text-red-600"><TrashIcon className="w-4 h-4"/></button>
                 </div>
