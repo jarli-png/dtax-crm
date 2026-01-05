@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import * as nodemailer from 'nodemailer';
 
 export async function POST(request: Request) {
   try {
@@ -9,7 +10,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Mangler påkrevde felt' }, { status: 400 });
     }
     
-    // Hent Brevo API-nøkkel
     const brevoSetting = await prisma.setting.findUnique({
       where: { key: 'brevo_api_key' }
     });
@@ -18,37 +18,36 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Brevo API-nøkkel ikke konfigurert' }, { status: 400 });
     }
 
-    // Finn prospect basert på e-post
     const prospect = await prisma.prospect.findFirst({
       where: { email: to }
     });
 
-    // Send via Brevo
-    const brevoResponse = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'api-key': brevoSetting.value,
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        sender: { name: 'dTax', email: 'kundeservice@dtax.no' },
-        to: [{ email: to }],
-        bcc: bcc ? [{ email: bcc }] : undefined,
-        subject,
-        htmlContent: body.replace(/\n/g, '<br>')
-      })
+    // SMTP transport uten List-Unsubscribe header
+    const transporter = nodemailer.createTransport({
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: 'jarli@jarli.no',
+        pass: brevoSetting.value
+      }
     });
 
-    if (!brevoResponse.ok) {
-      const error = await brevoResponse.text();
-      console.error('Brevo error:', error);
-      return NextResponse.json({ error: 'Kunne ikke sende e-post: ' + error }, { status: 500 });
+    const mailOptions: nodemailer.SendMailOptions = {
+      from: '"dTax Kundeservice" <kundeservice@dtax.no>',
+      to: to,
+      subject: subject,
+      text: body,
+      html: body.replace(/\n/g, '<br>'),
+    };
+    
+    if (bcc) {
+      mailOptions.bcc = bcc;
     }
 
-    const brevoData = await brevoResponse.json();
+    const info = await transporter.sendMail(mailOptions);
 
-    // Hvis ticketId finnes, legg til melding på eksisterende ticket
+    // Håndter ticket
     if (ticketId) {
       await prisma.ticketMessage.create({
         data: {
@@ -59,7 +58,7 @@ export async function POST(request: Request) {
           subject,
           bodyText: body,
           bodyHtml: body.replace(/\n/g, '<br>'),
-          messageId: brevoData.messageId
+          messageId: info.messageId
         }
       });
       
@@ -68,7 +67,6 @@ export async function POST(request: Request) {
         data: { updatedAt: new Date() }
       });
     } else {
-      // Opprett ny ticket
       const year = new Date().getFullYear();
       const lastTicket = await prisma.ticket.findFirst({
         where: { ticketNumber: { startsWith: `TKT-${year}-` } },
@@ -96,14 +94,14 @@ export async function POST(request: Request) {
               subject,
               bodyText: body,
               bodyHtml: body.replace(/\n/g, '<br>'),
-              messageId: brevoData.messageId
+              messageId: info.messageId
             }
           }
         }
       });
     }
 
-    return NextResponse.json({ success: true, messageId: brevoData.messageId });
+    return NextResponse.json({ success: true, messageId: info.messageId });
   } catch (error) {
     console.error('Failed to send email:', error);
     return NextResponse.json({ error: 'Server error: ' + error }, { status: 500 });

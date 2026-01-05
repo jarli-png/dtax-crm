@@ -88,6 +88,8 @@ model Prospect {
   contracts           Contract[]
   invoices            Invoice[]
   tickets           Ticket[]
+  tasks             Task[]
+  notesList         ProspectNote[]
   
   @@index([status])
   @@index([assignedToId])
@@ -523,4 +525,40 @@ model TicketMessage {
 enum MessageDirection {
   INBOUND
   OUTBOUND
+}
+
+// ============================================
+// OPPGAVER/TASKS
+// ============================================
+
+model Task {
+  id              String        @id @default(uuid())
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  title           String
+  description     String?
+  dueDate         DateTime
+  
+  completed       Boolean       @default(false)
+  completedAt     DateTime?
+  
+  reminder        DateTime?
+  reminderSent    Boolean       @default(false)
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([prospectId])
+  @@index([dueDate])
+  @@index([completed])
+}
+
+model ProspectNote {
+  id          String   @id @default(uuid())
+  prospectId  String
+  prospect    Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  content     String
+  createdAt   DateTime @default(now())
+  
+  @@index([prospectId])
 }
