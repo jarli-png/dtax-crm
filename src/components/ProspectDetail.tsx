@@ -1,4 +1,5 @@
 'use client';
+import { normalizeToE164, makeTelHref, formatPhoneDisplay, wasCalledRecently, formatLastCalled } from '@/lib/phone';
 import { useState, useEffect } from 'react';
 import { ArrowLeftIcon, PencilIcon, CheckIcon, XMarkIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 
@@ -38,6 +39,7 @@ interface Prospect {
   city: string;
   status: string;
   notes: string;
+  lastCalledAt: string | null;
   companies: Company[];
   tasks: Task[];
   notesList: Note[];
@@ -87,6 +89,15 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  };
+
+  const handleCall = async (phone: string | null) => {
+    if (!phone) return;
+    try {
+      await fetch(`/api/prospects/${prospectId}/call`, { method: 'POST' });
+      fetchProspect();
+    } catch (e) { console.error('Failed to update call status:', e); }
+    window.location.href = makeTelHref(normalizeToE164(phone));
   };
 
   const showMsg = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 2000); };
@@ -194,6 +205,7 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
   const statusConfig = STATUS_CONFIG[prospect.status] || { probability: 0, label: prospect.status, color: 'bg-gray-400' };
   const weightedValue = dtaxValue * (statusConfig.probability / 100);
   const currentStepIndex = FUNNEL_STEPS.indexOf(prospect.status);
+  const calledRecently = wasCalledRecently(prospect.lastCalledAt);
 
   return (
     <div className="space-y-6">
@@ -307,8 +319,35 @@ export default function ProspectDetail({ prospectId, onBack }: { prospectId: str
             ) : (
               <>
                 <div><span className="text-gray-500">E-post:</span> {prospect.email || '-'}</div>
-                <div><span className="text-gray-500">Telefon:</span> {prospect.phone || '-'}</div>
-                {prospect.phone2 && <div><span className="text-gray-500">Telefon 2:</span> {prospect.phone2}</div>}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-gray-500">Telefon:</span>
+                  {prospect.phone ? (
+                    <>
+                      <a href={makeTelHref(normalizeToE164(prospect.phone))} className="text-blue-600 hover:underline">{formatPhoneDisplay(prospect.phone)}</a>
+                      <button 
+                        onClick={() => handleCall(prospect.phone)}
+                        className={`btn btn-xs ${calledRecently ? 'bg-red-500 hover:bg-red-600 text-white' : 'btn-primary'}`}
+                      >
+                        Ring
+                      </button>
+                      <button onClick={() => navigator.clipboard.writeText(normalizeToE164(prospect.phone))} className="btn btn-xs">Kopier</button>
+                      {prospect.lastCalledAt && <span className="text-xs text-gray-400">{formatLastCalled(prospect.lastCalledAt)}</span>}
+                    </>
+                  ) : '-'}
+                </div>
+                {prospect.phone2 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-gray-500">Telefon 2:</span>
+                    <a href={makeTelHref(normalizeToE164(prospect.phone2))} className="text-blue-600 hover:underline">{formatPhoneDisplay(prospect.phone2)}</a>
+                    <button 
+                      onClick={() => handleCall(prospect.phone2)}
+                      className={`btn btn-xs ${calledRecently ? 'bg-red-500 hover:bg-red-600 text-white' : 'btn-primary'}`}
+                    >
+                      Ring
+                    </button>
+                    <button onClick={() => navigator.clipboard.writeText(normalizeToE164(prospect.phone2))} className="btn btn-xs">Kopier</button>
+                  </div>
+                )}
                 <div><span className="text-gray-500">Adresse:</span> {prospect.address ? `${prospect.address}, ${prospect.postalCode} ${prospect.city}` : '-'}</div>
               </>
             )}

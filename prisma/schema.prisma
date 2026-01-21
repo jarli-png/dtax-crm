@@ -79,6 +79,7 @@ model Prospect {
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
   convertedAt         DateTime?
+  lastCalledAt        DateTime?
   
   // Relasjoner
   companies           ProspectCompany[]
