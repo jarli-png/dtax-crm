@@ -532,3 +532,53 @@ model ProspectNote {
   
   @@index([prospectId])
 }
+
+
+// ============================================
+// API-NØKLER FOR EKSTERNE INTEGRASJONER
+// ============================================
+
+model ApiKey {
+  id              String        @id @default(uuid())
+  name            String        // Navn på tilbyder/integrasjon
+  keyHash         String        @unique // SHA-256 hash av nøkkelen
+  keyPrefix       String        // Første 8 tegn for identifikasjon (dtax_xxxx)
+  
+  permissions     String[]      // ["dialer:read", "dialer:write", "dialer:call"]
+  
+  isActive        Boolean       @default(true)
+  expiresAt       DateTime?
+  
+  lastUsedAt      DateTime?
+  usageCount      Int           @default(0)
+  
+  createdById     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Logging
+  apiLogs         ApiLog[]
+  
+  @@index([keyHash])
+  @@index([isActive])
+}
+
+model ApiLog {
+  id              String        @id @default(uuid())
+  apiKeyId        String
+  apiKey          ApiKey        @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  
+  endpoint        String
+  method          String
+  statusCode      Int
+  
+  requestIp       String?
+  userAgent       String?
+  
+  responseTime    Int?          // millisekunder
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([apiKeyId])
+  @@index([createdAt])
+}
