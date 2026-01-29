@@ -1,0 +1,534 @@
+// Prisma schema for dTax CRM
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// BRUKERE OG AUTENTISERING
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          UserRole  @default(ADMIN)
+  isActive      Boolean   @default(true)
+  isSuperAdmin  Boolean   @default(false)
+  resellerId    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLogin     DateTime?
+  
+  // Relasjoner
+  prospects     Prospect[]
+  activities    Activity[]
+  campaigns     Campaign[]
+  emailsSent    EmailLog[]
+  assignedTickets   Ticket[]
+}
+
+enum UserRole {
+  ADMIN
+  SALES
+  SUPPORT
+}
+
+// ============================================
+// PROSPECTS OG KUNDER
+// ============================================
+
+model Prospect {
+  id                  String          @id @default(uuid())
+  
+  // Kontaktinformasjon
+  firstName           String
+  lastName            String
+  email               String?
+  phone               String?
+  phone2              String?
+  address             String?
+  postalCode          String?
+  city                String?
+  
+  // Status og klassifisering
+  status              ProspectStatus  @default(NEW)
+  source              String?
+  priority            Priority        @default(MEDIUM)
+  
+  // Tilordning
+  assignedToId        String?
+  assignedTo          User?           @relation(fields: [assignedToId], references: [id])
+  
+  // Tax system integrasjon
+  taxSystemUserId     String?
+  taxSystemStatus     TaxStatus?
+  currentStep         Int?
+  
+  // Invoice system integrasjon  
+  invoiceCustomerId   String?
+  
+  // Metadata
+  notes               String?
+  tags                String[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  convertedAt         DateTime?
+  lastCalledAt        DateTime?
+  
+  // Relasjoner
+  companies           ProspectCompany[]
+  documents           Document[]
+  activities          Activity[]
+  emailLogs           EmailLog[]
+  contracts           Contract[]
+  invoices            Invoice[]
+  tickets           Ticket[]
+  tasks             Task[]
+  notesList         ProspectNote[]
+  
+  @@index([status])
+  @@index([assignedToId])
+  @@index([taxSystemUserId])
+}
+
+enum ProspectStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  IN_PROGRESS
+  STEP_1
+  STEP_2
+  STEP_3
+  STEP_4
+  STEP_5
+  STEP_6
+  CONVERTED
+  LOST
+  INACTIVE
+}
+
+enum TaxStatus {
+  NOT_REGISTERED
+  REGISTERED
+  CASE_CREATED
+  DOCUMENTS_UPLOADED
+  ANALYSIS_COMPLETE
+  READY_FOR_SUBMISSION
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ============================================
+// SELSKAPER (fra prospect-liste)
+// ============================================
+
+model ProspectCompany {
+  id                  String    @id @default(uuid())
+  prospectId          String
+  prospect            Prospect  @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  companyName         String
+  orgNumber           String
+  role                String?
+  
+  deletedDate         DateTime?
+  deletionReason      String?
+  
+  shareCapitalPaid    Decimal?  @db.Decimal(15, 2)
+  shareCapitalReg     Decimal?  @db.Decimal(15, 2)
+  estimatedTaxValue   Decimal?  @db.Decimal(15, 2)
+  
+  brrregUrl           String?
+  
+  createdAt           DateTime  @default(now())
+  
+  @@index([orgNumber])
+  @@index([prospectId])
+}
+
+// ============================================
+// DOKUMENTER
+// ============================================
+
+model Document {
+  id              String        @id @default(uuid())
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  fileName        String
+  fileType        String
+  mimeType        String
+  fileSize        Int
+  
+  s3Key           String
+  s3Bucket        String        @default("dtax-crm-documents")
+  
+  description     String?
+  source          String?
+  sourceId        String?
+  
+  version         Int           @default(1)
+  isLatest        Boolean       @default(true)
+  
+  uploadedById    String?
+  createdAt       DateTime      @default(now())
+  
+  @@index([prospectId])
+  @@index([fileType])
+}
+
+// ============================================
+// KONTRAKTER
+// ============================================
+
+model Contract {
+  id              String        @id @default(uuid())
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  contractType    String
+  status          ContractStatus @default(PENDING)
+  
+  signedAt        DateTime?
+  signatureRef    String?
+  
+  taxSystemRef    String?
+  documentId      String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  @@index([prospectId])
+}
+
+enum ContractStatus {
+  PENDING
+  SENT
+  SIGNED
+  EXPIRED
+  CANCELLED
+}
+
+// ============================================
+// FAKTURAER
+// ============================================
+
+model Invoice {
+  id              String        @id @default(uuid())
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  invoiceSystemId String
+  invoiceNumber   String
+  
+  amount          Decimal       @db.Decimal(15, 2)
+  vatAmount       Decimal       @db.Decimal(15, 2)
+  totalAmount     Decimal       @db.Decimal(15, 2)
+  
+  taxBenefit      Decimal?      @db.Decimal(15, 2)
+  commissionRate  Decimal?      @db.Decimal(5, 4)
+  
+  status          InvoiceStatus @default(DRAFT)
+  dueDate         DateTime?
+  paidAt          DateTime?
+  
+  documentId      String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  @@index([prospectId])
+  @@index([invoiceSystemId])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+  CREDITED
+}
+
+// ============================================
+// AKTIVITETER OG LOGG
+// ============================================
+
+model Activity {
+  id              String        @id @default(uuid())
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  userId          String?
+  user            User?         @relation(fields: [userId], references: [id])
+  
+  type            ActivityType
+  subject         String
+  description     String?
+  
+  duration        Int?
+  outcome         String?
+  
+  oldValue        String?
+  newValue        String?
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([prospectId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+enum ActivityType {
+  NOTE
+  CALL
+  EMAIL
+  MEETING
+  TASK
+  STATUS_CHANGE
+  DOCUMENT_UPLOADED
+  CONTRACT_SIGNED
+  INVOICE_CREATED
+  TAX_SUBMITTED
+  SYSTEM_EVENT
+}
+
+// ============================================
+// E-POST OG KAMPANJER
+// ============================================
+
+model Campaign {
+  id              String        @id @default(uuid())
+  name            String
+  description     String?
+  
+  subject         String
+  bodyHtml        String
+  bodyText        String?
+  
+  status          CampaignStatus @default(DRAFT)
+  
+  sentCount       Int           @default(0)
+  openedCount     Int           @default(0)
+  clickedCount    Int           @default(0)
+  convertedCount  Int           @default(0)
+  
+  createdById     String
+  createdBy       User          @relation(fields: [createdById], references: [id])
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  sentAt          DateTime?
+  
+  emailLogs       EmailLog[]
+  
+  @@index([status])
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  PAUSED
+  CANCELLED
+}
+
+model EmailLog {
+  id              String        @id @default(uuid())
+  
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  campaignId      String?
+  campaign        Campaign?     @relation(fields: [campaignId], references: [id])
+  
+  sentById        String?
+  sentBy          User?         @relation(fields: [sentById], references: [id])
+  
+  toEmail         String
+  fromEmail       String        @default("noreply@dtax.no")
+  subject         String
+  bodyPreview     String?
+  
+  status          EmailStatus   @default(QUEUED)
+  
+  sesMessageId    String?
+  
+  openedAt        DateTime?
+  clickedAt       DateTime?
+  bouncedAt       DateTime?
+  complainedAt    DateTime?
+  
+  bccEmail        String?
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([prospectId])
+  @@index([campaignId])
+  @@index([status])
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  BOUNCED
+  COMPLAINED
+  FAILED
+}
+
+// ============================================
+// SYSTEM-INTEGRASJON LOGG
+// ============================================
+
+model IntegrationLog {
+  id              String        @id @default(uuid())
+  
+  system          String
+  endpoint        String
+  method          String
+  
+  requestBody     String?
+  responseBody    String?
+  statusCode      Int?
+  
+  success         Boolean
+  errorMessage    String?
+  
+  relatedType     String?
+  relatedId       String?
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([system])
+  @@index([createdAt])
+}
+
+// ============================================
+// SYSTEMINNSTILLINGER
+// ============================================
+
+model Setting {
+  id              String        @id @default(uuid())
+  key             String        @unique
+  value           String
+  description     String?
+  updatedAt       DateTime      @updatedAt
+}
+
+// ============================================
+// TICKETS
+// ============================================
+
+model Ticket {
+  id              String        @id @default(uuid())
+  ticketNumber    String        @unique
+  
+  prospectId      String?
+  prospect        Prospect?     @relation(fields: [prospectId], references: [id])
+  
+  subject         String
+  status          TicketStatus  @default(OPEN)
+  priority        Priority      @default(MEDIUM)
+  
+  assignedToId    String?
+  assignedTo      User?         @relation(fields: [assignedToId], references: [id])
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  closedAt        DateTime?
+  
+  messages        TicketMessage[]
+  
+  @@index([status])
+  @@index([prospectId])
+  @@index([ticketNumber])
+}
+
+enum TicketStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+model TicketMessage {
+  id              String        @id @default(uuid())
+  ticketId        String
+  ticket          Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  
+  direction       MessageDirection
+  
+  fromEmail       String
+  toEmail         String
+  subject         String
+  bodyHtml        String?
+  bodyText        String?
+  
+  messageId       String?
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([ticketId])
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+// ============================================
+// OPPGAVER/TASKS
+// ============================================
+
+model Task {
+  id              String        @id @default(uuid())
+  prospectId      String
+  prospect        Prospect      @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  
+  title           String
+  description     String?
+  dueDate         DateTime
+  
+  completed       Boolean       @default(false)
+  completedAt     DateTime?
+  
+  reminder        DateTime?
+  reminderSent    Boolean       @default(false)
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([prospectId])
+  @@index([dueDate])
+  @@index([completed])
+}
+
+model ProspectNote {
+  id          String   @id @default(uuid())
+  prospectId  String
+  prospect    Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  content     String
+  createdAt   DateTime @default(now())
+  
+  @@index([prospectId])
+}
